@@ -23,6 +23,10 @@ class _PaintScreenState extends State<PaintScreen> {
   Color selectedColor = Colors.black;
   double opacity = 1;
   double strokeWidth = 2;
+  List<Widget> textBlankWIdget = [];
+  TextEditingController controller = TextEditingController();
+  ScrollController _scrollController = ScrollController();
+  List<Map> messages = [];
 
   @override
   void initState() {
@@ -30,10 +34,20 @@ class _PaintScreenState extends State<PaintScreen> {
     connect();
   }
 
+  void renderTextBlank(String text) {
+    textBlankWIdget.clear();
+    for (int i = 0; i < text.length; i++) {
+      textBlankWIdget.add(const Text(
+        '_',
+        style: TextStyle(fontSize: 30),
+      ));
+    }
+  }
+
   //socket to client connection
   void connect() {
     print('Attempting to connect...');
-    _socket = IO.io('http://172.20.10.9:5000', <String, dynamic>{
+    _socket = IO.io('http://192.168.83.71:5000', <String, dynamic>{
       "transports": ["websocket"],
       "autoConnect": false
     });
@@ -53,8 +67,10 @@ class _PaintScreenState extends State<PaintScreen> {
     _socket.onConnect((data) {
       print('Connected!!!');
       _socket.on('updateRoom', (roomData) {
+        print(roomData['word']);
         if (mounted) {
           setState(() {
+            renderTextBlank(roomData['word']);
             dataOfRoom = roomData;
           });
         }
@@ -73,11 +89,33 @@ class _PaintScreenState extends State<PaintScreen> {
           });
         }
       });
+
+      _socket.on('msg', (msgData) {
+        print('Received message: $msgData');
+        setState(() {
+          messages.add(msgData);
+        });
+        _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent + 40,
+            duration: Duration(milliseconds: 20),
+            curve: Curves.easeInOut);
+      });
       _socket.on('color-change', (colorString) {
         int value = int.parse(colorString, radix: 16);
-        Color otherColor = new Color(value);
+        Color otherColor = Color(value);
         setState(() {
           selectedColor = otherColor;
+        });
+      });
+
+      _socket.on('stroke-width', (value) {
+        setState(() {
+          strokeWidth = value.toDouble();
+        });
+      });
+      _socket.on('clean-screen', (data) {
+        setState(() {
+          points.clear();
         });
       });
     });
@@ -127,7 +165,7 @@ class _PaintScreenState extends State<PaintScreen> {
                       onPressed: () {
                         Navigator.of(context).pop();
                       },
-                      child: Text('Close'))
+                      child: const Text('Close'))
                 ],
               ));
     }
@@ -202,19 +240,93 @@ class _PaintScreenState extends State<PaintScreen> {
                       activeColor: selectedColor,
                       label: "Strokewidth $strokeWidth",
                       value: strokeWidth,
-                      onChanged: (double value) {},
+                      onChanged: (double value) {
+                        Map map = {
+                          'value': value,
+                          'roomName': dataOfRoom['name']
+                        };
+                        _socket.emit('stroke-width', map);
+                      },
                     ),
                   ),
                   IconButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      _socket.emit('clean-screen', dataOfRoom['name']);
+                    },
                     icon: Icon(
                       Icons.layers_clear,
                       color: selectedColor,
                     ),
                   ),
                 ],
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: textBlankWIdget,
+              ),
+
+              //Displaying messages
+              Container(
+                height: MediaQuery.of(context).size.height * 0.3,
+                child: ListView.builder(
+                    controller: _scrollController,
+                    shrinkWrap: true,
+                    itemCount: messages.length,
+                    itemBuilder: (context, index) {
+                      var msg = messages[index].values;
+                      return ListTile(
+                        // title: Text(
+                        //   msg.elementAt(0),
+                        //   style: TextStyle(
+                        //       color: Colors.black,
+                        //       fontSize: 19,
+                        //       fontWeight: FontWeight.bold),
+                        // ),
+                        title: Text(
+                          msg.elementAt(0),
+                          style: TextStyle(color: Colors.grey, fontSize: 16),
+                        ),
+                      );
+                    }),
               )
             ],
+          ),
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+                margin: EdgeInsets.symmetric(horizontal: 20),
+                child: TextField(
+                  controller: controller,
+                  onSubmitted: (value) {
+                    if (value.trim().isNotEmpty) {
+                      Map map = {
+                        //'username': widget.data['username'],
+                        'msg': value.trim(),
+                        'word': dataOfRoom['word'],
+                        'roomName': widget.data['name'],
+                      };
+                      _socket.emit('msg', map);
+                      controller.clear();
+                    }
+                  },
+                  autocorrect: false,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.transparent),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
+                    filled: false,
+                    fillColor: Theme.of(context).primaryColorDark,
+                    hintText: 'Your Guess',
+                    hintStyle: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  textInputAction: TextInputAction.done,
+                )),
           )
         ],
       ),
