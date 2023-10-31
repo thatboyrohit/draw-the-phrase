@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -23,10 +24,13 @@ class _PaintScreenState extends State<PaintScreen> {
   Color selectedColor = Colors.black;
   double opacity = 1;
   double strokeWidth = 2;
-  List<Widget> textBlankWIdget = [];
+  List<Widget> textBlankWidget = [];
   TextEditingController controller = TextEditingController();
   ScrollController _scrollController = ScrollController();
   List<Map> messages = [];
+  int guessedUserCtr = 0;
+  int _start = 60;
+  late Timer _timer;
 
   @override
   void initState() {
@@ -34,10 +38,26 @@ class _PaintScreenState extends State<PaintScreen> {
     connect();
   }
 
+  void startTimer() {
+    const oneSec = Duration(seconds: 1);
+    _timer = Timer.periodic(oneSec, (Timer time) {
+      if (_start == 0) {
+        _socket.emit('change-turn', dataOfRoom['name']);
+        setState(() {
+          _timer.cancel();
+        });
+      } else {
+        setState(() {
+          _start--;
+        });
+      }
+    });
+  }
+
   void renderTextBlank(String text) {
-    textBlankWIdget.clear();
+    textBlankWidget.clear();
     for (int i = 0; i < text.length; i++) {
-      textBlankWIdget.add(const Text(
+      textBlankWidget.add(const Text(
         '_',
         style: TextStyle(fontSize: 30),
       ));
@@ -47,7 +67,7 @@ class _PaintScreenState extends State<PaintScreen> {
   //socket to client connection
   void connect() {
     print('Attempting to connect...');
-    _socket = IO.io('http://192.168.83.71:5000', <String, dynamic>{
+    _socket = IO.io('http://192.168.139.71:5000', <String, dynamic>{
       "transports": ["websocket"],
       "autoConnect": false
     });
@@ -68,12 +88,15 @@ class _PaintScreenState extends State<PaintScreen> {
       print('Connected!!!');
       _socket.on('updateRoom', (roomData) {
         print(roomData['word']);
-        if (mounted) {
-          setState(() {
-            renderTextBlank(roomData['word']);
-            dataOfRoom = roomData;
-          });
+        //if (mounted) {
+        setState(() {
+          renderTextBlank(roomData['word']);
+          dataOfRoom = roomData;
+        });
+        if (roomData['isJoin'] != true) {
+          startTimer();
         }
+        // }
       });
       _socket.on('points', (point) {
         if (point['details'] != null) {
@@ -94,11 +117,39 @@ class _PaintScreenState extends State<PaintScreen> {
         print('Received message: $msgData');
         setState(() {
           messages.add(msgData);
+          guessedUserCtr = msgData['guessedUserCtr'];
         });
+        if (guessedUserCtr == dataOfRoom['players'].length - 1) {
+          _socket.emit('change-turn', dataOfRoom['name']);
+        }
         _scrollController.animateTo(
             _scrollController.position.maxScrollExtent + 40,
             duration: Duration(milliseconds: 20),
             curve: Curves.easeInOut);
+      });
+      _socket.on('change-turn', (data) {
+        String oldWord = dataOfRoom['word'];
+        showDialog(
+            context: context,
+            builder: (context) {
+              Future.delayed(Duration(seconds: 2), () {
+                setState(() {
+                  dataOfRoom = data;
+                  renderTextBlank(data['word']);
+                  guessedUserCtr = 0;
+                  _start = 60;
+                  points.clear();
+                });
+                Navigator.of(context).pop;
+                _timer.cancel();
+                startTimer();
+              });
+              return AlertDialog(
+                title: Center(
+                  child: Text('World was $oldWord'),
+                ),
+              );
+            });
       });
       _socket.on('color-change', (colorString) {
         int value = int.parse(colorString, radix: 16);
@@ -134,12 +185,6 @@ class _PaintScreenState extends State<PaintScreen> {
     final width = MediaQuery.of(context).size.width;
     final height = MediaQuery.of(context).size.height;
 
-    // Color pickerColor = Color(0xff443a49);
-    // Color currentColor = Color(0xff443a49);
-    // void changeColor(Color color) {
-    //   setState(() => pickerColor = color);
-    // }
-
     void selectColor() {
       showDialog(
           context: context,
@@ -152,8 +197,7 @@ class _PaintScreenState extends State<PaintScreen> {
                           String colorString = color.toString();
                           String valueString =
                               colorString.split('(0x')[1].split(')')[0];
-                          print(colorString);
-                          print(valueString);
+
                           Map map = {
                             'color': valueString,
                             'roomName': dataOfRoom['name']
@@ -260,10 +304,17 @@ class _PaintScreenState extends State<PaintScreen> {
                   ),
                 ],
               ),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: textBlankWIdget,
-              ),
+              dataOfRoom['turn']['nickname'] != widget.data['nickname']
+                  ? Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: textBlankWidget,
+                    )
+                  : Center(
+                      child: Text(
+                        dataOfRoom['word'],
+                        style: TextStyle(fontSize: 30),
+                      ),
+                    ),
 
               //Displaying messages
               Container(
@@ -275,15 +326,15 @@ class _PaintScreenState extends State<PaintScreen> {
                     itemBuilder: (context, index) {
                       var msg = messages[index].values;
                       return ListTile(
-                        // title: Text(
-                        //   msg.elementAt(0),
-                        //   style: TextStyle(
-                        //       color: Colors.black,
-                        //       fontSize: 19,
-                        //       fontWeight: FontWeight.bold),
-                        // ),
                         title: Text(
                           msg.elementAt(0),
+                          style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 19,
+                              fontWeight: FontWeight.bold),
+                        ),
+                        subtitle: Text(
+                          msg.elementAt(1),
                           style: TextStyle(color: Colors.grey, fontSize: 16),
                         ),
                       );
@@ -291,44 +342,66 @@ class _PaintScreenState extends State<PaintScreen> {
               )
             ],
           ),
-          Align(
-            alignment: Alignment.bottomCenter,
-            child: Container(
-                margin: EdgeInsets.symmetric(horizontal: 20),
-                child: TextField(
-                  controller: controller,
-                  onSubmitted: (value) {
-                    if (value.trim().isNotEmpty) {
-                      Map map = {
-                        //'username': widget.data['username'],
-                        'msg': value.trim(),
-                        'word': dataOfRoom['word'],
-                        'roomName': widget.data['name'],
-                      };
-                      _socket.emit('msg', map);
-                      controller.clear();
-                    }
-                  },
-                  autocorrect: false,
-                  decoration: InputDecoration(
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: const BorderSide(color: Colors.transparent),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 14),
-                    filled: false,
-                    fillColor: Theme.of(context).primaryColorDark,
-                    hintText: 'Your Guess',
-                    hintStyle: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  textInputAction: TextInputAction.done,
-                )),
-          )
+          dataOfRoom['turn']['nickname'] != widget.data['nickname']
+              ? Align(
+                  alignment: Alignment.bottomCenter,
+                  child: Container(
+                      margin:
+                          EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                      child: TextField(
+                        controller: controller,
+                        onSubmitted: (value) {
+                          if (value.trim().isNotEmpty) {
+                            Map map = {
+                              'username': widget.data['nickname'],
+                              'msg': value.trim(),
+                              'word': dataOfRoom['word'],
+                              'roomName': widget.data['name'],
+                              'guessedUserCtr': guessedUserCtr,
+                              'totalTime': 60,
+                              'timeTaken': 60 - _start,
+                            };
+                            _socket.emit('msg', map);
+                            controller.clear();
+                          }
+                        },
+                        autocorrect: false,
+                        decoration: InputDecoration(
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide:
+                                const BorderSide(color: Colors.transparent),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 14),
+                          filled: false,
+                          fillColor: Theme.of(context).primaryColorDark,
+                          hintText: 'Your Guess',
+                          hintStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        textInputAction: TextInputAction.done,
+                      )),
+                )
+              : Container(),
         ],
+      ),
+      floatingActionButton: Container(
+        margin: EdgeInsets.only(bottom: 30),
+        child: FloatingActionButton(
+          onPressed: () {},
+          elevation: 7,
+          backgroundColor: Colors.white,
+          child: Text(
+            '$_start',
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 22,
+            ),
+          ),
+        ),
       ),
     );
   }
