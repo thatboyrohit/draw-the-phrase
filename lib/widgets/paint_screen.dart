@@ -67,7 +67,7 @@ class _PaintScreenState extends State<PaintScreen> {
   //socket to client connection
   void connect() {
     print('Attempting to connect...');
-    _socket = IO.io('http://172.20.10.9:5000', <String, dynamic>{
+    _socket = IO.io('https://skrill-io.onrender.com', <String, dynamic>{
       "transports": ["websocket"],
       "autoConnect": false
     });
