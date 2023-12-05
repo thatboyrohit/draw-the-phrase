@@ -22,6 +22,9 @@ Identifying Correct Words
 Switching Turns
 Changing Rounds
 
+## Screenshots
+<img src="https://github.com/thatboyrohit/draw-the-phrase/blob/master/screenshots/create%26join_screen.png" width="200" />  <img src="https://github.com/thatboyrohit/draw-the-phrase/blob/master/screenshots/main_screen.png" width="200" />  <img src="https://github.com/thatboyrohit/draw-the-phrase/blob/master/screenshots/guessed_word_screen.png" width="200" />
+
 ## Environment Variables
 
 To run this project, you will need to add the following environment variables to your .env file
