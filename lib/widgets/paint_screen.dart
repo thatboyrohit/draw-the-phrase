@@ -67,7 +67,7 @@ class _PaintScreenState extends State<PaintScreen> {
   //socket to client connection
   void connect() {
     print('Attempting to connect...');
-    _socket = IO.io('http://192.168.139.71:5000', <String, dynamic>{
+    _socket = IO.io('http://172.20.10.9:5000', <String, dynamic>{
       "transports": ["websocket"],
       "autoConnect": false
     });
@@ -146,7 +146,7 @@ class _PaintScreenState extends State<PaintScreen> {
               });
               return AlertDialog(
                 title: Center(
-                  child: Text('World was $oldWord'),
+                  child: Text('Word was $oldWord'),
                 ),
               );
             });
