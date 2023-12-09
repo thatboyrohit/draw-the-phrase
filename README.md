@@ -39,13 +39,13 @@ Make sure to replace <yourip> in `lib/screens/paint_screen.dart` with your IP ad
 Clone the project
 
 ```bash
-  git clone https://github.com/RivaanRanawat/cuadro
+  git clone https://github.com/thatboyrohit/draw-the-phrase
 ```
 
 Go to the project directory
 
 ```bash
-  cd cuadro
+  cd draw-the-phrase
 ```
 
 Install dependencies (Client Side)
